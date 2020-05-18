@@ -5,6 +5,8 @@ the program could be altered to advise a number of washers to add or remove.
 
 The program will then calculate the consistency of each input by measuring the timing between the start of each note.
 
+For better explanation, see README.md
+
 Written by Suddenly for martin and the mmx
 """
 try:
@@ -170,30 +172,3 @@ for channel in channel_list:
         note_intervals_timing.append(channel.note_timing_list[note_time_index] - channel.note_timing_list[note_time_index - 1])
     print(f"The average note interval: {average(note_intervals_timing):.4}\n"
           f"The standard deviation of the channel: {st_dev(note_intervals_timing):.4}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
