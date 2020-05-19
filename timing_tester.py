@@ -11,8 +11,8 @@ Written by Suddenly for martin and the mmx
 """
 try:
     import warnings
-    from numpy import frombuffer, int16
-    import wave
+    from numpy import average, std
+    from scipy.io.wavfile import read as wav_read
     from os import listdir
 except ModuleNotFoundError:
     print("ERROR: Module not found. Please install the numpy and wave package before running.")
@@ -20,8 +20,8 @@ except ModuleNotFoundError:
 
 # ----- SETTINGS -----
 
-volume_threshold = 500  # Wave value difference
-minimal_note_spacing = 1000  # samples between notes to catch duplicates
+volume_threshold = 254  # Wave value difference
+minimal_note_spacing = 10000  # samples between notes to catch duplicates
 input_files_folder = "input_files"
 
 
@@ -29,19 +29,12 @@ input_files_folder = "input_files"
 
 
 def get_min_index(lst):
+    # returns the index of the lowest value of lst
     min_index = 0
     for index in range(len(lst)):
         if lst[index] <= lst[min_index]:
             min_index = index
     return min_index
-
-
-def average(lst):
-    return sum(lst) / len(lst)
-
-
-def st_dev(lst):
-    return ((sum([(x - average(lst)) ** 2 for x in lst])) / (len(lst) - 1)) ** 0.5
 
 
 # ----- CLASSES -----
@@ -52,30 +45,34 @@ class Channel:
         self.file_name = channel_file_name
         self.file_name_formatted = channel_file_name[:-4].capitalize()
         try:
-            with wave.open("./input_files/" + channel_file_name, "rb") as audio_file:
-                self.timing = 2 * audio_file.getframerate() ** -1
-                input_frames = audio_file.readframes(audio_file.getparams()[3])
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self.sample_rate, self.frames_array = wav_read("./" + input_files_folder + "/" + channel_file_name)
+                self.timing = 1 / self.sample_rate
         except FileNotFoundError:
             print("Oops, I thought I found a file, but it seems it does not exist... \nIf you are seeing this, something went pretty wrong, "
                   "but i'm continuing anyway")
-        self.frames_array = frombuffer(input_frames, int16)
-        self.note_indices = []
-        self.get_note_indices()
+        self.note_indices = self.get_note_indices()
 
         self.note_timing_list = self.get_note_timing(0)
         self.note_framing_list = self.get_note_framing(0)
 
     def get_note_indices(self):
+        note_indices = []
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             for frame_index in range(1, len(self.frames_array)):
                 difference = abs(self.frames_array[frame_index - 1] - self.frames_array[frame_index])
-                if len(self.note_indices) >= 1:
-                    spacing = frame_index - self.note_indices[-1]
+                if len(note_indices) > 0:
+                    spacing = frame_index - note_indices[-1]
                 else:
                     spacing = minimal_note_spacing + 1
                 if difference > volume_threshold and spacing > minimal_note_spacing:
-                    self.note_indices.append(frame_index)
+                    note_indices.append(frame_index)
+            if len(note_indices) == 0:
+                print("ERROR, empty track found. Please adjust parameters or remove track (TODO ignore track)")
+                raise SystemExit
+            return note_indices
 
     def get_note_timing(self, reference_index):
         note_timing_list = []
@@ -93,7 +90,7 @@ class Channel:
         self.get_note_timing(reference_index)
         print("\n", self.file_name_formatted)
         for i in range(len(self.note_indices)):
-            print(f"\nNote #{str(i + 1)}: {self.note_timing_list[i]:.5} s")
+            print(f"\nNote #{str(i + 1)}: {self.note_timing_list[i]} s")
 
 
 # ----- PROGRAM -----
@@ -117,7 +114,7 @@ file_names = []
 if len(folder_files) > 0:
     print("\n\t", len(folder_files), "files loaded!")
 else:
-    print("\nCouldn't find any files! Please put the input files in a subfolder called 'input_files' next to the python file")
+    print(f"\nCouldn't find any files! Please put the input files in a subfolder called '{input_files_folder}' next to the python file")
     raise SystemExit
 
 for folder_file in folder_files:
@@ -157,7 +154,7 @@ channel_index = get_min_index(first_note_times_sorting)
 reference_time = first_note_times_sorting[channel_index]
 
 print("\n\nThe first channel is", file_name_formatted_sorting[channel_index],
-      f"\nThe first note is  {first_note_times_sorting[channel_index]:.4} s from the start of the file")
+      f"\nThe first note is  {first_note_times_sorting[channel_index]} s from the start of the file")
 
 first_note_times_sorting.pop(channel_index)
 file_name_formatted_sorting.pop(channel_index)
@@ -165,7 +162,7 @@ file_name_formatted_sorting.pop(channel_index)
 while len(first_note_times_sorting) > 0:
     channel_index = get_min_index(first_note_times_sorting)
     print("\n\nThe next channel is", file_name_formatted_sorting[channel_index],
-          f"\nThis channel is {first_note_times_sorting[channel_index] - reference_time:.4} s later than the first channel")
+          f"\nThis channel is {first_note_times_sorting[channel_index] - reference_time} s later than the first channel")
     first_note_times_sorting.pop(channel_index)
     file_name_formatted_sorting.pop(channel_index)
 
@@ -180,4 +177,4 @@ for channel in channel_list:
     for note_time_index in range(1, len(channel.note_timing_list)):
         note_intervals_timing.append(channel.note_timing_list[note_time_index] - channel.note_timing_list[note_time_index - 1])
     print(f"The average note interval: {average(note_intervals_timing):.4}\n"
-          f"The standard deviation of the channel: {st_dev(note_intervals_timing):.4}")
+          f"The standard deviation of the channel: {std(note_intervals_timing, ddof=1)}")
