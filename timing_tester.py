@@ -11,8 +11,9 @@ Written by Suddenly for martin and the mmx
 """
 try:
     import warnings
-    from numpy import frombuffer, int16
+    from numpy import frombuffer, int16, average, std
     import wave
+    # from scipy import io.wavfile.read  <- possible faster
     from os import listdir
 except ModuleNotFoundError:
     print("ERROR: Module not found. Please install the numpy and wave package before running.")
@@ -29,19 +30,12 @@ input_files_folder = "input_files"
 
 
 def get_min_index(lst):
+    # returns the index of the lowest value of lst
     min_index = 0
     for index in range(len(lst)):
         if lst[index] <= lst[min_index]:
             min_index = index
     return min_index
-
-
-def average(lst):
-    return sum(lst) / len(lst)
-
-
-def st_dev(lst):
-    return ((sum([(x - average(lst)) ** 2 for x in lst])) / (len(lst) - 1)) ** 0.5
 
 
 # ----- CLASSES -----
@@ -53,29 +47,30 @@ class Channel:
         self.file_name_formatted = channel_file_name[:-4].capitalize()
         try:
             with wave.open("./input_files/" + channel_file_name, "rb") as audio_file:
-                self.timing = 2 * audio_file.getframerate() ** -1
+                self.timing = 2 / audio_file.getframerate()
                 input_frames = audio_file.readframes(audio_file.getparams()[3])
         except FileNotFoundError:
             print("Oops, I thought I found a file, but it seems it does not exist... \nIf you are seeing this, something went pretty wrong, "
                   "but i'm continuing anyway")
         self.frames_array = frombuffer(input_frames, int16)
-        self.note_indices = []
-        self.get_note_indices()
+        self.note_indices = self.get_note_indices()
 
         self.note_timing_list = self.get_note_timing(0)
         self.note_framing_list = self.get_note_framing(0)
 
     def get_note_indices(self):
+        note_indices = []
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             for frame_index in range(1, len(self.frames_array)):
                 difference = abs(self.frames_array[frame_index - 1] - self.frames_array[frame_index])
-                if len(self.note_indices) >= 1:
-                    spacing = frame_index - self.note_indices[-1]
+                if len(note_indices) > 0:
+                    spacing = frame_index - note_indices[-1]
                 else:
                     spacing = minimal_note_spacing + 1
                 if difference > volume_threshold and spacing > minimal_note_spacing:
-                    self.note_indices.append(frame_index)
+                    note_indices.append(frame_index)
+            return note_indices
 
     def get_note_timing(self, reference_index):
         note_timing_list = []
@@ -180,4 +175,5 @@ for channel in channel_list:
     for note_time_index in range(1, len(channel.note_timing_list)):
         note_intervals_timing.append(channel.note_timing_list[note_time_index] - channel.note_timing_list[note_time_index - 1])
     print(f"The average note interval: {average(note_intervals_timing):.4}\n"
-          f"The standard deviation of the channel: {st_dev(note_intervals_timing):.4}")
+          f"The standard deviation of the channel: {std(note_intervals_timing, ddof=1):.4}")
+
