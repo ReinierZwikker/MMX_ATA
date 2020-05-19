@@ -11,9 +11,8 @@ Written by Suddenly for martin and the mmx
 """
 try:
     import warnings
-    import numpy
+    from numpy import frombuffer, int16
     import wave
-    # import matplotlib.pyplot as plt
     from os import listdir
 except ModuleNotFoundError:
     print("ERROR: Module not found. Please install the numpy and wave package before running.")
@@ -23,6 +22,7 @@ except ModuleNotFoundError:
 
 volume_threshold = 500  # Wave value difference
 minimal_note_spacing = 1000  # samples between notes to catch duplicates
+input_files_folder = "input_files"
 
 
 # ----- FUNCTIONS -----
@@ -48,17 +48,17 @@ def st_dev(lst):
 
 class Channel:
 
-    def __init__(self, file_name):  # TODO better name for 'file_name'
-        self.file_name = file_name
-        self.file_name_formatted = file_name[:-4].capitalize()
+    def __init__(self, channel_file_name):
+        self.file_name = channel_file_name
+        self.file_name_formatted = channel_file_name[:-4].capitalize()
         try:
-            with wave.open("./input_files/" + file_name, "rb") as audio_file:
+            with wave.open("./input_files/" + channel_file_name, "rb") as audio_file:
                 self.timing = 2 * audio_file.getframerate() ** -1
                 input_frames = audio_file.readframes(audio_file.getparams()[3])
         except FileNotFoundError:
             print("Oops, I thought I found a file, but it seems it does not exist... \nIf you are seeing this, something went pretty wrong, "
                   "but i'm continuing anyway")
-        self.frames_array = numpy.frombuffer(input_frames, numpy.int16)
+        self.frames_array = frombuffer(input_frames, int16)
         self.note_indices = []
         self.get_note_indices()
 
@@ -89,6 +89,12 @@ class Channel:
             note_framing_list.append((note_index - reference_index))
         return note_framing_list
 
+    def print_notes_found(self, reference_index):
+        self.get_note_timing(reference_index)
+        print("\n", self.file_name_formatted)
+        for i in range(len(self.note_indices)):
+            print(f"\nNote #{str(i + 1)}: {self.note_timing_list[i]:.5} s")
+
 
 # ----- PROGRAM -----
 
@@ -100,7 +106,12 @@ print(f"\nUsing {volume_threshold} as volume threshold and {minimal_note_spacing
 
 print("\nLoading files...")
 
-folder_files = listdir("./input_files")
+try:
+    folder_files = listdir("./" + input_files_folder)
+except FileNotFoundError:
+    print(f"\nCould not find the '{input_files_folder}' folder. Please put your input files in before running!")
+    raise SystemExit
+
 file_names = []
 
 if len(folder_files) > 0:
@@ -126,9 +137,7 @@ print("\n\n\n\t Results:\n\n\nDetected notes:")
 
 
 for channel in channel_list:
-    print("\n", channel.file_name_formatted)
-    for i in range(len(channel.note_indices)):
-        print(f"\nNote #{str(i + 1)}: {channel.get_note_timing(0)[i]:.5} s")
+    channel.print_notes_found(0)
 
 
 print("\n\n\n\t Machine timing:")
