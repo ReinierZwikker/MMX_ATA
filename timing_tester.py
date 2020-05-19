@@ -45,17 +45,20 @@ class Channel:
         self.file_name = channel_file_name
         self.file_name_formatted = channel_file_name[:-4].capitalize()
         try:
+            # Ignoring warnings here because SciPy warns if it finds non-data block, like the header, which is not a problem for us
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self.sample_rate, self.frames_array = wav_read("./" + input_files_folder + "/" + channel_file_name)
+                # The time that each sample takes is the reciprocal of the sample rate
                 self.timing = 1 / self.sample_rate
         except FileNotFoundError:
             print("Oops, I thought I found a file, but it seems it does not exist... \nIf you are seeing this, something went pretty wrong, "
                   "but i'm continuing anyway")
         self.note_indices = self.get_note_indices()
 
-        self.note_timing_list = self.get_note_timing(0)
-        self.note_framing_list = self.get_note_framing(0)
+        # The first time we want all the notes timing from the start of the list
+        self.note_framing_list = self.get_note_framing_list(0)
+        self.note_timing_list = self.get_note_timing_list(self.note_framing_list)
 
     def get_note_indices(self):
         note_indices = []
@@ -70,24 +73,24 @@ class Channel:
                 if difference > volume_threshold and spacing > minimal_note_spacing:
                     note_indices.append(frame_index)
             if len(note_indices) == 0:
-                print("ERROR, empty track found. Please adjust parameters or remove track (TODO ignore track)")
+                print("ERROR, empty track found. Please adjust parameters or remove track")  # TODO ignore empty tracks
                 raise SystemExit
             return note_indices
 
-    def get_note_timing(self, reference_index):
-        note_timing_list = []
-        for note_index in self.note_indices:
-            note_timing_list.append(self.timing * (note_index - reference_index))
-        return note_timing_list
-
-    def get_note_framing(self, reference_index):
+    def get_note_framing_list(self, reference_index):
         note_framing_list = []
         for note_index in self.note_indices:
             note_framing_list.append((note_index - reference_index))
         return note_framing_list
 
+    def get_note_timing_list(self, note_framing_list):
+        return [self.get_note_timing(frame_index) for frame_index in note_framing_list]
+
+    def get_note_timing(self, frame_index):
+        return self.timing * frame_index
+
     def print_notes_found(self, reference_index):
-        self.get_note_timing(reference_index)
+        self.get_note_timing_list(self.get_note_framing_list(reference_index))
         print("\n", self.file_name_formatted)
         for i in range(len(self.note_indices)):
             print(f"\nNote #{str(i + 1)}: {self.note_timing_list[i]} s")
@@ -104,12 +107,11 @@ print(f"\nUsing {volume_threshold} as volume threshold and {minimal_note_spacing
 print("\nLoading files...")
 
 try:
+    # To read the files, we first need to find their names
     folder_files = listdir("./" + input_files_folder)
 except FileNotFoundError:
     print(f"\nCould not find the '{input_files_folder}' folder. Please put your input files in before running!")
     raise SystemExit
-
-file_names = []
 
 if len(folder_files) > 0:
     print("\n\t", len(folder_files), "files loaded!")
@@ -117,6 +119,8 @@ else:
     print(f"\nCouldn't find any files! Please put the input files in a subfolder called '{input_files_folder}' next to the python file")
     raise SystemExit
 
+# Check if all the files are actually wave files
+file_names = []
 for folder_file in folder_files:
     if folder_file.endswith(".wav"):
         file_names.append(folder_file)
@@ -125,40 +129,39 @@ for folder_file in folder_files:
 
 print("\nAnalysing data...")
 
+# Create a Channel object for each file in the folder and load that wave file into the object
 channel_list = []
-
 for file_name in file_names:
     channel_list.append(Channel(file_name))
 
 print("\n\n\n\t Results:\n\n\nDetected notes:")
 
-
+# print the all notes found with their time wrt the begin of the file
 for channel in channel_list:
     channel.print_notes_found(0)
 
-
 print("\n\n\n\t Machine timing:")
 
+# Create 3 new lists, the placement of all notes and then a copy of this list and a copy of the name list, to edit for the sorting process
 first_note_times = []
 file_name_formatted_sorting = []
-
 for channel in channel_list:
     first_note_times.append(channel.note_timing_list[0])
     file_name_formatted_sorting.append(channel.file_name_formatted)
-
-
 first_note_times_sorting = first_note_times
 
-
+# Detect the first note and use that as reference
 channel_index = get_min_index(first_note_times_sorting)
 reference_time = first_note_times_sorting[channel_index]
 
 print("\n\nThe first channel is", file_name_formatted_sorting[channel_index],
       f"\nThe first note is  {first_note_times_sorting[channel_index]} s from the start of the file")
 
+# Remove this entry from the sorting list, as we already had it.
 first_note_times_sorting.pop(channel_index)
 file_name_formatted_sorting.pop(channel_index)
 
+# Repeat this process of displaying the first note until there are no notes left.
 while len(first_note_times_sorting) > 0:
     channel_index = get_min_index(first_note_times_sorting)
     print("\n\nThe next channel is", file_name_formatted_sorting[channel_index],
@@ -166,10 +169,10 @@ while len(first_note_times_sorting) > 0:
     first_note_times_sorting.pop(channel_index)
     file_name_formatted_sorting.pop(channel_index)
 
-
 print("\n\n\n\t Channel consistency:")
 
-
+# Calculate the consistency of each channel by making a list of the time between each note and giving the avg and st_dev of that list. This will
+# show if the channel is actually playing a note every beat and if the interval is consistent.
 for channel in channel_list:
     print("\n\nChannel:", channel.file_name_formatted)
     note_intervals_timing = []
