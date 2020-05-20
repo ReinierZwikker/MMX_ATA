@@ -3,6 +3,10 @@ Marble Machine X Automatic Timing Analyser
 
 # This program was created for the MMX Project
 
+## Comment
+
+I'm currently rewriting the program to be more smart and to look at actual songs played by the mmx. The exact way how the finished product is going to be is still being determined.
+
 ## Goal
 In Issue n#19, you said that the finding the delays of the different channels manually is too time consuming. It sounded like a nice challenge, so I wrote a program to do it automatically. 
 
